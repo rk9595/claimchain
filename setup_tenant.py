@@ -583,24 +583,36 @@ def _build_guardrail_config() -> dict:
             "pii_detection":         {"enabled": True, "action": "block"},
             "adversarial_detection": {"enabled": True, "action": "block"},
             "topic_enforcement": {
-                # Set to `block` at the integrator's request — this is the
-                # production-correct posture. Known caveat (DEF-005): the
-                # LLM topic classifier false-positives on core insurance
-                # vocabulary ("claims", "insurance", "underwriting") even
-                # when those match `system_purpose`, because the
-                # confidence-weighted `overall_allowed` logic collapses to
-                # false whenever `allowed_topics` is empty. Expect some
-                # legitimate prompts to be blocked at the input stage
-                # until the classifier is retuned server-side; this is
-                # evidence for DEF-005, not a regression in the app.
+                # Whitelist-only posture (per product guidance: "we only do
+                # allowed_topics, not blocked"). In Shield's topic classifier
+                # (guardrails/input/topic_enforcement.py) whitelist mode means
+                # *only* messages that match one of `allowed_topics` are
+                # permitted — anything else is blocked at the input stage.
+                #
+                # This sidesteps the earlier DEF-005 symptom where raw
+                # insurance vocabulary ("claims", "insurance") was being
+                # classified as off-topic against an empty allow-list; with
+                # an explicit allow-list the classifier has a positive set
+                # to match against and the `overall_allowed` logic
+                # collapses to true for on-domain prompts.
                 "enabled": True, "action": "block",
                 "settings": {
-                    "blocked_topics": [
-                        "medical advice", "legal advice",
-                        "cryptocurrency", "stock trading",
-                        "creative writing", "poetry", "fiction",
-                        "weapons", "self-harm", "adult content",
-                        "religion", "politics",
+                    "allowed_topics": [
+                        "auto insurance", "home insurance",
+                        "motorcycle insurance", "renters insurance",
+                        "umbrella insurance",
+                        "insurance claims", "claim status",
+                        "claim payments", "claim settlements",
+                        "fraud investigation",
+                        "underwriting", "policy binding",
+                        "policy cancellation", "policy renewal",
+                        "quotes and premium estimates",
+                        "billing and payments", "refunds",
+                        "coverage and deductibles", "policy documents",
+                        "customer account management",
+                        "identity verification",
+                        "insurance analytics and reporting",
+                        "general insurance customer service",
                     ],
                     "system_purpose": "GEICO customer service and insurance operations (auto, home, motorcycle, claims, fraud, underwriting, analytics)",
                     "confidence_threshold": 0.8,
