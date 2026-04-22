@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GEICO Insurance Agent · LLM-Shield POC</title>
+  <style>
+    :root{
+      --bg:#0b0f16; --panel:#121823; --panel2:#0f1420; --border:#1f2a3b;
+      --text:#e6edf3; --muted:#8b96a6; --accent:#4f8cff; --accent2:#2dd4bf;
+      --ok:#22c55e; --warn:#f59e0b; --err:#ef4444; --redact:#a78bfa;
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+      font-family:"Inter","Segoe UI",system-ui,sans-serif;height:100%}
+    a{color:var(--accent)}
+    header{display:flex;align-items:center;justify-content:space-between;
+      padding:10px 18px;border-bottom:1px solid var(--border);
+      background:linear-gradient(180deg,#0e1522 0%,#0b0f16 100%)}
+    header h1{margin:0;font-size:16px;font-weight:600;letter-spacing:.2px}
+    header .subtitle{color:var(--muted);font-size:12px;margin-left:8px}
+    header .right{display:flex;gap:10px;align-items:center;font-size:12px;color:var(--muted)}
+    .pill{padding:3px 8px;border-radius:999px;border:1px solid var(--border);
+      background:var(--panel);font-size:11px;color:var(--muted)}
+    main{display:grid;grid-template-columns:260px 1fr 380px;height:calc(100vh - 48px)}
+    .sidebar,.events{border-right:1px solid var(--border);
+      background:var(--panel);overflow-y:auto}
+    .events{border-right:none;border-left:1px solid var(--border)}
+    .chat{display:flex;flex-direction:column;background:var(--bg)}
+
+    /* Sidebar */
+    .sidebar{padding:14px}
+    .sidebar h3{font-size:11px;text-transform:uppercase;letter-spacing:.14em;
+      color:var(--muted);margin:10px 0 6px 0}
+    .sidebar .role-row{display:flex;flex-direction:column;gap:6px}
+    .role-btn{padding:8px 10px;border-radius:8px;border:1px solid var(--border);
+      background:var(--panel2);color:var(--text);cursor:pointer;font-size:13px;
+      text-align:left;transition:all .15s}
+    .role-btn:hover{border-color:var(--accent)}
+    .role-btn.active{border-color:var(--accent);background:#14213b;box-shadow:0 0 0 1px var(--accent) inset}
+    .agents-list{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+    .agent-card{padding:8px;border-radius:8px;border:1px solid var(--border);
+      background:var(--panel2);font-size:12px}
+    .agent-card .aname{color:var(--text);font-weight:600;font-size:12.5px}
+    .agent-card .adesc{color:var(--muted);font-size:11px;margin-top:3px;line-height:1.3}
+    .agent-card .tools{margin-top:5px;display:flex;flex-wrap:wrap;gap:3px}
+    .tool-chip{font-size:10px;color:var(--muted);padding:2px 6px;border-radius:4px;
+      background:#1a2435;border:1px solid var(--border)}
+    .redteam-btn{margin-top:14px;width:100%;padding:10px;border-radius:8px;
+      border:1px solid #7a1f1f;background:#3a1414;color:#fecaca;cursor:pointer;
+      font-size:12.5px;font-weight:600}
+    .redteam-btn:hover{background:#4a1818}
+
+    /* Chat */
+    .messages{flex:1;overflow-y:auto;padding:18px 24px;scroll-behavior:smooth}
+    .msg{max-width:720px;margin:0 auto 14px auto;padding:10px 14px;border-radius:12px;
+      border:1px solid var(--border);font-size:13.5px;line-height:1.5;white-space:pre-wrap;
+      word-wrap:break-word}
+    .msg.user{background:#1a2133;border-color:#2b3b5a;margin-left:auto;margin-right:0}
+    .msg.agent{background:var(--panel2);border-color:var(--border)}
+    .msg.system{background:#2a1f10;border-color:#5a3e1a;color:#fbbf24;
+      font-size:12px;max-width:720px;margin:0 auto 14px auto}
+    .msg.block{background:#2a1212;border-color:#7a1f1f;color:#fecaca}
+    .msg .meta{color:var(--muted);font-size:10.5px;margin-bottom:4px;
+      text-transform:uppercase;letter-spacing:.08em}
+    .composer{display:flex;gap:8px;padding:12px 18px;border-top:1px solid var(--border);
+      background:var(--panel2)}
+    .composer textarea{flex:1;background:var(--bg);color:var(--text);border:1px solid var(--border);
+      border-radius:10px;padding:10px 12px;resize:none;font-family:inherit;font-size:13.5px;
+      min-height:40px;max-height:140px}
+    .composer textarea:focus{outline:none;border-color:var(--accent)}
+    .composer button{padding:0 18px;background:var(--accent);color:#fff;border:none;
+      border-radius:10px;font-weight:600;cursor:pointer;font-size:13px}
+    .composer button:hover{background:#3b7eff}
+    .composer button:disabled{opacity:.5;cursor:not-allowed}
+
+    /* Events panel */
+    .events{padding:12px 14px}
+    .events h3{font-size:11px;text-transform:uppercase;letter-spacing:.14em;
+      color:var(--muted);margin:4px 0 10px 0;display:flex;justify-content:space-between;
+      align-items:center}
+    .events .clear{color:var(--accent);cursor:pointer;font-size:10px;text-transform:none}
+    .event{padding:8px 10px;border-radius:8px;border:1px solid var(--border);
+      background:var(--panel2);margin-bottom:7px;font-size:11.5px;line-height:1.4}
+    .event .e-head{display:flex;justify-content:space-between;align-items:center;
+      margin-bottom:4px}
+    .event .e-kind{font-weight:600;font-size:10.5px;letter-spacing:.04em;
+      text-transform:uppercase;padding:1px 6px;border-radius:4px;
+      background:#1a2435;color:var(--muted)}
+    .event.allow .e-kind{color:var(--ok);background:#102a1a}
+    .event.block .e-kind{color:var(--err);background:#2a1212}
+    .event.warn .e-kind{color:var(--warn);background:#2a220d}
+    .event.redact .e-kind{color:var(--redact);background:#21173a}
+    .event.error .e-kind{color:var(--err);background:#2a1212}
+    .event .e-time{color:var(--muted);font-size:10px}
+    .event .e-summary{color:var(--text)}
+    .event .e-agent{color:var(--muted);font-size:10px;margin-top:3px}
+    .event details{margin-top:5px;font-size:10.5px;color:var(--muted)}
+    .event details pre{overflow-x:auto;background:var(--bg);padding:6px;border-radius:4px;
+      margin:4px 0 0 0;font-size:10px}
+
+    /* Red-team modal */
+    .modal-bg{position:fixed;inset:0;background:rgba(2,6,15,.78);z-index:10;
+      display:none;align-items:center;justify-content:center}
+    .modal-bg.open{display:flex}
+    .modal{background:var(--panel);border:1px solid var(--border);border-radius:14px;
+      width:min(900px,94vw);max-height:86vh;overflow-y:auto;padding:18px 22px}
+    .modal h2{margin:0 0 12px 0;font-size:18px}
+    .modal .subtitle{color:var(--muted);font-size:13px;margin-bottom:14px}
+    .modal .actions{display:flex;gap:10px;margin-bottom:14px}
+    .modal button{padding:8px 16px;border-radius:8px;border:none;cursor:pointer;font-size:13px}
+    .modal .primary{background:var(--accent);color:#fff}
+    .modal .secondary{background:var(--panel2);color:var(--text);border:1px solid var(--border)}
+    .scenario{padding:9px 11px;border-radius:8px;border:1px solid var(--border);
+      margin-bottom:7px;font-size:12.5px;background:var(--panel2)}
+    .scenario.pass{border-left:3px solid var(--ok)}
+    .scenario.fail{border-left:3px solid var(--err)}
+    .scenario .s-head{display:flex;justify-content:space-between;gap:8px;align-items:center}
+    .scenario .cat{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+    .scenario .verdict{font-size:10px;padding:2px 8px;border-radius:4px;font-weight:600}
+    .scenario.pass .verdict{background:#102a1a;color:var(--ok)}
+    .scenario.fail .verdict{background:#2a1212;color:var(--err)}
+    .scenario .s-prompt{color:var(--muted);font-size:12px;margin-top:4px;font-style:italic}
+    .scenario .s-reply{margin-top:5px;font-size:12px;color:var(--text);
+      max-height:72px;overflow:hidden;text-overflow:ellipsis}
+  </style>
+</head>
+<body>
+  <header>
+    <div style="display:flex;align-items:center;gap:10px">
+      <h1>GEICO Insurance Agent</h1>
+      <span class="subtitle">LangChain multi-agent RAG · protected by LLM-Shield</span>
+    </div>
+    <div class="right">
+      <span class="pill" id="shield-status">shield: ?</span>
+      <span class="pill" id="tenant-status">tenant: ?</span>
+    </div>
+  </header>
+
+  <main>
+    <aside class="sidebar">
+      <h3>User Role</h3>
+      <div class="role-row" id="roles"></div>
+
+      <h3 style="margin-top:18px">Agents</h3>
+      <div class="agents-list" id="agents"></div>
+
+      <button class="redteam-btn" id="redteam-btn">Run Red-Team Suite →</button>
+    </aside>
+
+    <section class="chat">
+      <div class="messages" id="messages">
+        <div class="msg system">Welcome. Pick a role on the left and ask anything GEICO-related. Every request flows through LLM-Shield — the right-hand panel shows every guardrail decision in real time.</div>
+      </div>
+      <div class="composer">
+        <textarea id="input" rows="1" placeholder="Ask the agent…  (e.g. 'What is accident forgiveness?')"></textarea>
+        <button id="send">Send</button>
+      </div>
+    </section>
+
+    <aside class="events">
+      <h3>
+        <span>Shield Events</span>
+        <span class="clear" id="clear-events">clear</span>
+      </h3>
+      <div id="events"></div>
+    </aside>
+  </main>
+
+  <div class="modal-bg" id="redteam-modal">
+    <div class="modal">
+      <h2>Red-Team Attack Suite</h2>
+      <div class="subtitle">Fires a catalog of known-bad prompts at the agent and checks that the shield blocks (or the agent refuses) everything it should. Happy-path scenarios must still succeed.</div>
+      <div class="actions">
+        <button class="primary" id="run-redteam">Run full suite</button>
+        <button class="secondary" id="close-redteam">Close</button>
+        <span id="redteam-summary" style="margin-left:auto;color:var(--muted);font-size:13px"></span>
+      </div>
+      <div id="redteam-results"></div>
+    </div>
+  </div>
+
+<script>
+const state = { role:"customer", lastTs:0, running:false };
+
+async function fetchJSON(url, opts={}){
+  const r = await fetch(url, {headers:{"Content-Type":"application/json"}, ...opts});
+  return r.json();
+}
+
+function el(tag, attrs={}, text=""){
+  const e = document.createElement(tag);
+  for(const [k,v] of Object.entries(attrs)){
+    if(k==="class") e.className=v;
+    else if(k==="onclick") e.onclick=v;
+    else e.setAttribute(k,v);
+  }
+  if(text) e.textContent = text;
+  return e;
+}
+
+function addMsg(role, text, kind=""){
+  const m = el("div",{class:`msg ${role} ${kind}`});
+  if(role==="user"){
+    m.appendChild(el("div",{class:"meta"},`YOU · role=${state.role}`));
+  } else if(role==="agent"){
+    m.appendChild(el("div",{class:"meta"},"AGENT"));
+  }
+  m.appendChild(el("span",{},text));
+  document.getElementById("messages").appendChild(m);
+  m.scrollIntoView({behavior:"smooth",block:"end"});
+}
+
+async function loadConfig(){
+  const cfg = await fetchJSON("/api/config");
+  document.getElementById("shield-status").textContent = "shield: "+cfg.shield_url.replace(/^https?:\/\//,"");
+  document.getElementById("tenant-status").textContent = "tenant: "+(cfg.tenant_id||"?");
+  const rolesEl = document.getElementById("roles");
+  rolesEl.innerHTML="";
+  for(const r of cfg.roles){
+    const b = el("button",{class:"role-btn"+(r===state.role?" active":"")},r);
+    b.onclick = () => {
+      state.role = r;
+      document.querySelectorAll(".role-btn").forEach(x=>x.classList.toggle("active",x.textContent===r));
+    };
+    rolesEl.appendChild(b);
+  }
+  const ag = document.getElementById("agents");
+  ag.innerHTML="";
+  for(const a of cfg.agents){
+    const card = el("div",{class:"agent-card"});
+    card.appendChild(el("div",{class:"aname"},a.name));
+    card.appendChild(el("div",{class:"adesc"},a.description||""));
+    const tools = el("div",{class:"tools"});
+    (a.tools||[]).forEach(t=>tools.appendChild(el("span",{class:"tool-chip"},t)));
+    card.appendChild(tools);
+    ag.appendChild(card);
+  }
+  state.redTeam = cfg.red_team_scenarios || [];
+}
+
+async function sendMessage(){
+  if(state.running) return;
+  const inp = document.getElementById("input");
+  const msg = inp.value.trim();
+  if(!msg) return;
+  addMsg("user", msg);
+  inp.value=""; inp.style.height="";
+  state.running=true; document.getElementById("send").disabled=true;
+  try{
+    const r = await fetchJSON("/api/chat",{
+      method:"POST",
+      body: JSON.stringify({message:msg, role:state.role}),
+    });
+    if(r.blocked){
+      addMsg("agent",`[${r.stage||"blocked"}] ${r.reply}`,"block");
+    } else {
+      addMsg("agent", r.reply || "(empty response)");
+    }
+  } catch(e){
+    addMsg("agent","Error: "+e,"block");
+  } finally {
+    state.running=false; document.getElementById("send").disabled=false;
+    inp.focus();
+  }
+}
+
+function renderEvent(ev){
+  const d = new Date(ev.ts*1000);
+  const hh = d.toLocaleTimeString();
+  const kind = (ev.action || "").toLowerCase();
+  const wrap = el("div",{class:`event ${kind}`});
+  const head = el("div",{class:"e-head"});
+  head.appendChild(el("span",{class:"e-kind"},`${ev.kind} · ${ev.action}`));
+  head.appendChild(el("span",{class:"e-time"},hh));
+  wrap.appendChild(head);
+  wrap.appendChild(el("div",{class:"e-summary"},ev.summary||""));
+  wrap.appendChild(el("div",{class:"e-agent"},`agent=${ev.agent_key||"?"}  role=${ev.user_role||"-"}`));
+  if(ev.detail && Object.keys(ev.detail).length){
+    const d1 = el("details");
+    d1.appendChild(el("summary",{},"details"));
+    const pre = el("pre",{},JSON.stringify(ev.detail,null,2));
+    d1.appendChild(pre);
+    wrap.appendChild(d1);
+  }
+  return wrap;
+}
+
+async function pollEvents(){
+  try{
+    const r = await fetchJSON("/api/events?since="+state.lastTs);
+    const container = document.getElementById("events");
+    for(const ev of r.events){
+      container.insertBefore(renderEvent(ev), container.firstChild);
+      state.lastTs = Math.max(state.lastTs, ev.ts);
+    }
+    // cap to last 120 events to keep DOM light
+    while(container.children.length > 120){
+      container.removeChild(container.lastChild);
+    }
+  }catch(e){ /* no-op */ }
+}
+
+function openRedTeam(){
+  document.getElementById("redteam-modal").classList.add("open");
+  document.getElementById("redteam-results").innerHTML="";
+  document.getElementById("redteam-summary").textContent="";
+}
+
+async function runRedTeam(){
+  const box = document.getElementById("redteam-results");
+  const sum = document.getElementById("redteam-summary");
+  box.innerHTML = "<div style='color:var(--muted);font-size:13px;padding:8px'>running… this can take 1-2 minutes</div>";
+  sum.textContent = "";
+  const r = await fetchJSON("/api/redteam",{
+    method:"POST",
+    body: JSON.stringify({role: state.role}),
+  });
+  box.innerHTML="";
+  const passed = r.results.filter(x=>x.verdict==="pass").length;
+  sum.textContent = `${passed}/${r.total} pass  ·  ${r.blocked} blocked by shield (${r.expected_block} expected)`;
+  for(const s of r.results){
+    const w = el("div",{class:`scenario ${s.verdict}`});
+    const head = el("div",{class:"s-head"});
+    head.appendChild(el("div",{},`[${s.category}] ${s.id} · ${s.title}`));
+    head.appendChild(el("span",{class:"verdict"},s.verdict.toUpperCase()));
+    w.appendChild(head);
+    w.appendChild(el("div",{class:"cat"},`expected=${s.expected}  observed=${s.observed}  role=${s.role}  ${s.latency_ms}ms`));
+    w.appendChild(el("div",{class:"s-prompt"},`"${s.prompt}"`));
+    w.appendChild(el("div",{class:"s-reply"},s.reply));
+    box.appendChild(w);
+  }
+}
+
+// wiring
+document.getElementById("send").onclick = sendMessage;
+document.getElementById("input").addEventListener("keydown", e => {
+  if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); sendMessage(); }
+});
+document.getElementById("input").addEventListener("input", e => {
+  e.target.style.height = "auto";
+  e.target.style.height = Math.min(140, e.target.scrollHeight)+"px";
+});
+document.getElementById("clear-events").onclick = async () => {
+  await fetchJSON("/api/events/clear",{method:"POST"});
+  document.getElementById("events").innerHTML="";
+  state.lastTs = 0;
+};
+document.getElementById("redteam-btn").onclick = openRedTeam;
+document.getElementById("close-redteam").onclick = () => document.getElementById("redteam-modal").classList.remove("open");
+document.getElementById("run-redteam").onclick = runRedTeam;
+
+loadConfig();
+setInterval(pollEvents, 1200);
+</script>
+</body>
+</html>
