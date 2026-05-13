@@ -1,0 +1,160 @@
+# Insurance Agent POC — all-in-one OpenShift manifest
+#
+# Apply:
+#   oc project <your-project>
+#   oc apply -f insurance-agent-all-in-one.yaml
+#
+# Before applying, replace the four REPLACE_ME values in the Secret below:
+#   SHIELD_ADMIN_KEY
+#   TENANT_API_KEY
+#   RUNPOD_TOKEN
+#   LITELLM_API_KEY
+#
+# This POC is embedding-free: RAG is local lexical search over bundled
+# markdown policy docs, so no OPENAI_API_KEY or embedding endpoint is needed.
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: insurance-agent-secrets
+  labels:
+    app: insurance-agent
+type: Opaque
+stringData:
+  # Shield / Votal admin + tenant auth
+  SHIELD_ADMIN_KEY: "REPLACE_ME"
+  TENANT_API_KEY: "REPLACE_ME"
+  RUNPOD_TOKEN: "REPLACE_ME"
+
+  # Railway-hosted LiteLLM proxy master key
+  LITELLM_API_KEY: "REPLACE_ME"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: insurance-agent-config
+  labels:
+    app: insurance-agent
+data:
+  # Server
+  PORT: "7860"
+
+  # Shield / Votal Shield
+  LLM_SHIELD_URL: "https://kk5losqxwr2ui7.api.runpod.ai"
+  TENANT_ID: "geico-poc"
+
+  # LiteLLM proxy for all chat/model calls
+  LITELLM_BASE_URL: "https://litellm-guardrails-votal-ai-production.up.railway.app/v1"
+  LITELLM_API_BASE: "https://litellm-guardrails-votal-ai-production.up.railway.app/v1"
+
+  # The Railway proxy has default_on=false for Votal guards, so the app
+  # opts in per request via OpenAI extra_body: {"guardrails": [...]}.
+  LITELLM_GUARDRAILS: "votal-input-guard,votal-output-guard"
+
+  # Must be registered in the Railway LiteLLM proxy and support tool calls.
+  LLM_MODEL: "gpt-4.1-mini"
+
+  # Votal attribution headers forwarded to LiteLLM.
+  VOTAL_TENANT_KEY: "geico-poc"
+  VOTAL_USER_ID: "openshift-agent"
+  VOTAL_SESSION_ID: "openshift-session"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: insurance-agent
+  labels:
+    app: insurance-agent
+    app.kubernetes.io/name: insurance-agent
+    app.kubernetes.io/component: web
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: insurance-agent
+  template:
+    metadata:
+      labels:
+        app: insurance-agent
+        app.kubernetes.io/name: insurance-agent
+        app.kubernetes.io/component: web
+    spec:
+      containers:
+        - name: insurance-agent
+          image: docker.io/sundi133/insurance-agent:0.1.2
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 7860
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: insurance-agent-config
+            - secretRef:
+                name: insurance-agent-secrets
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 7860
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 7860
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: insurance-agent
+  labels:
+    app: insurance-agent
+spec:
+  selector:
+    app: insurance-agent
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 7860
+      protocol: TCP
+  type: ClusterIP
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: insurance-agent
+  labels:
+    app: insurance-agent
+  annotations:
+    # Agentic LLM calls can take longer than the default 30s route timeout.
+    haproxy.router.openshift.io/timeout: 120s
+spec:
+  to:
+    kind: Service
+    name: insurance-agent
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None
