@@ -77,15 +77,26 @@ def ui() -> HTMLResponse:
 
 @app.get("/health")
 def health() -> dict:
-    return {"ok": True, "shield_url": shield.base_url,
-            "tenant": os.getenv("TENANT_ID", "")}
+    litellm_base = os.getenv("LITELLM_BASE_URL", "")
+    return {
+        "ok": True,
+        "shield_url": shield.base_url,
+        "tenant": os.getenv("TENANT_ID", ""),
+        "llm_endpoint": litellm_base or "https://api.openai.com/v1",
+        "llm_via_litellm": bool(litellm_base),
+        "llm_model": os.getenv("LLM_MODEL", "gpt-4o-mini"),
+    }
 
 
 @app.get("/api/config")
 def get_config() -> dict:
+    litellm_base = os.getenv("LITELLM_BASE_URL", "")
     return {
         "shield_url": shield.base_url,
         "tenant_id": os.getenv("TENANT_ID", ""),
+        "llm_endpoint": litellm_base or "https://api.openai.com/v1",
+        "llm_via_litellm": bool(litellm_base),
+        "llm_model": os.getenv("LLM_MODEL", "gpt-4o-mini"),
         "roles": ["customer", "adjuster", "underwriter",
                   "fraud_investigator", "admin"],
         "agents": [

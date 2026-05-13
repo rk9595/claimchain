@@ -14,5 +14,5 @@ langchain-core>=0.2.0
 langchain-openai>=0.1.7
 langchain-community>=0.2.0
 
-# Keep the RAG pure-Python (no FAISS) — uses an in-memory vector store
-# driven by OpenAI embeddings.
+# RAG is local lexical search over markdown docs; no embedding/vector DB
+# dependency required.

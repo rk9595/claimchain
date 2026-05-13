@@ -1,0 +1,230 @@
+﻿{
+    "tenant_id":  "geico-poc",
+    "name":  "GEICO Insurance POC",
+    "plan":  "enterprise",
+    "input_guardrails":  {
+                             "keyword_blocklist":  {
+                                                       "enabled":  true,
+                                                       "action":  "block",
+                                                       "settings":  {
+                                                                        "keywords":  [
+
+                                                                                     ]
+                                                                    }
+                                                   },
+                             "pii_detection":  {
+                                                   "enabled":  true,
+                                                   "action":  "block",
+                                                   "settings":  {
+
+                                                                }
+                                               },
+                             "adversarial_detection":  {
+                                                           "enabled":  true,
+                                                           "action":  "block",
+                                                           "settings":  {
+
+                                                                        }
+                                                       },
+                             "topic_enforcement":  {
+                                                       "enabled":  true,
+                                                       "action":  "block",
+                                                       "settings":  {
+                                                                        "allowed_topics":  [
+                                                                                               "general insurance customer service for claims, insurance, fraud reports"
+                                                                                           ],
+                                                                        "system_purpose":  "GEICO customer service and insurance operations (auto, home, motorcycle, claims, fraud, underwriting, analytics)",
+                                                                        "confidence_threshold":  0.8
+                                                                    }
+                                                   },
+                             "length_limit":  {
+                                                  "enabled":  true,
+                                                  "action":  "block",
+                                                  "settings":  {
+                                                                   "max_chars":  4000
+                                                               }
+                                              },
+                             "rate_limiter":  {
+                                                  "enabled":  true,
+                                                  "action":  "block",
+                                                  "settings":  {
+                                                                   "requests_per_minute":  60
+                                                               }
+                                              }
+                         },
+    "output_guardrails":  {
+                              "pii_detection":  {
+                                                    "enabled":  true,
+                                                    "action":  "block",
+                                                    "settings":  {
+
+                                                                 }
+                                                },
+                              "role_redaction":  {
+                                                     "enabled":  true,
+                                                     "action":  "block",
+                                                     "settings":  {
+
+                                                                  }
+                                                 },
+                              "hallucinated_links":  {
+                                                         "enabled":  true,
+                                                         "action":  "block",
+                                                         "settings":  {
+
+                                                                      }
+                                                     },
+                              "bias_detection":  {
+                                                     "enabled":  true,
+                                                     "action":  "block",
+                                                     "settings":  {
+
+                                                                  }
+                                                 }
+                          },
+    "rbac":  {
+                 "roles":  {
+                               "customer_tier":  {
+                                                     "allowed_tools":  [
+                                                                           "search_policy_docs",
+                                                                           "quote_estimate",
+                                                                           "delegate_to_claims_agent",
+                                                                           "delegate_to_underwriting_agent"
+                                                                       ],
+                                                     "denied_tools":  [
+
+                                                                      ],
+                                                     "max_tokens_per_request":  4096,
+                                                     "rate_limit":  "120/min",
+                                                     "data_clearance":  "public",
+                                                     "allowed_data_scopes":  [
+                                                                                 "public_docs",
+                                                                                 "quote_inputs",
+                                                                                 "price"
+                                                                             ],
+                                                     "denied_data_scopes":  [
+
+                                                                            ]
+                                                 },
+                               "adjuster_tier":  {
+                                                     "allowed_tools":  [
+                                                                           "search_policy_docs",
+                                                                           "get_claim",
+                                                                           "update_claim_status",
+                                                                           "approve_claim_payment",
+                                                                           "flag_for_fraud_investigation",
+                                                                           "delegate_to_fraud_agent"
+                                                                       ],
+                                                     "denied_tools":  [
+
+                                                                      ],
+                                                     "max_tokens_per_request":  4096,
+                                                     "rate_limit":  "200/min",
+                                                     "data_clearance":  "internal",
+                                                     "allowed_data_scopes":  [
+                                                                                 "public_docs",
+                                                                                 "claim_status",
+                                                                                 "claim_amount",
+                                                                                 "notes",
+                                                                                 "fraud_flag",
+                                                                                 "payment"
+                                                                             ],
+                                                     "denied_data_scopes":  [
+
+                                                                            ]
+                                                 },
+                               "underwriter_tier":  {
+                                                        "allowed_tools":  [
+                                                                              "search_policy_docs",
+                                                                              "lookup_customer",
+                                                                              "pull_credit_report",
+                                                                              "quote_estimate",
+                                                                              "bind_policy",
+                                                                              "cancel_policy",
+                                                                              "issue_refund",
+                                                                              "run_analytics_query"
+                                                                          ],
+                                                        "denied_tools":  [
+
+                                                                         ],
+                                                        "max_tokens_per_request":  6144,
+                                                        "rate_limit":  "200/min",
+                                                        "data_clearance":  "confidential",
+                                                        "allowed_data_scopes":  [
+                                                                                    "public_docs",
+                                                                                    "name",
+                                                                                    "contact",
+                                                                                    "policy_list",
+                                                                                    "risk_profile",
+                                                                                    "credit_score",
+                                                                                    "trade_lines",
+                                                                                    "public_records",
+                                                                                    "policy_binding",
+                                                                                    "policy_cancel",
+                                                                                    "aggregates",
+                                                                                    "quote_inputs",
+                                                                                    "price",
+                                                                                    "risk"
+                                                                                ],
+                                                        "denied_data_scopes":  [
+
+                                                                               ]
+                                                    },
+                               "fraud_tier":  {
+                                                  "allowed_tools":  [
+                                                                        "search_policy_docs",
+                                                                        "get_claim",
+                                                                        "lookup_customer",
+                                                                        "pull_credit_report",
+                                                                        "flag_for_fraud_investigation",
+                                                                        "delete_customer_record",
+                                                                        "run_analytics_query"
+                                                                    ],
+                                                  "denied_tools":  [
+
+                                                                   ],
+                                                  "max_tokens_per_request":  6144,
+                                                  "rate_limit":  "180/min",
+                                                  "data_clearance":  "restricted",
+                                                  "allowed_data_scopes":  [
+                                                                              "*",
+                                                                              "fraud_flag",
+                                                                              "notes",
+                                                                              "claim_history",
+                                                                              "ssn_verification",
+                                                                              "audit_log"
+                                                                          ],
+                                                  "denied_data_scopes":  [
+
+                                                                         ]
+                                              },
+                               "supervisor_tier":  {
+                                                       "allowed_tools":  [
+                                                                             "delegate_to_claims_agent",
+                                                                             "delegate_to_underwriting_agent",
+                                                                             "delegate_to_fraud_agent"
+                                                                         ],
+                                                       "denied_tools":  [
+
+                                                                        ],
+                                                       "max_tokens_per_request":  8192,
+                                                       "rate_limit":  "300/min",
+                                                       "data_clearance":  "internal",
+                                                       "allowed_data_scopes":  [
+                                                                                   "delegation"
+                                                                               ],
+                                                       "denied_data_scopes":  [
+
+                                                                              ]
+                                                   }
+                           },
+                 "agents":  {
+                                "intake-agent":  "customer_tier",
+                                "claims-agent":  "adjuster_tier",
+                                "underwriting-agent":  "underwriter_tier",
+                                "fraud-agent":  "fraud_tier",
+                                "supervisor-agent":  "supervisor_tier"
+                            }
+             },
+    "quota":  null
+}

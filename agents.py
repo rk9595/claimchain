@@ -73,7 +73,7 @@ class AgentDef:
 AGENTS: dict[str, AgentDef] = {
     "intake-agent": AgentDef(
         agent_id="intake-agent",
-        name="GEICO Customer Intake Agent",
+        name="Customer Intake Agent",
         description="Customer-facing intake. Answers FAQ via RAG, generates "
                     "quotes, and routes requests to specialist agents.",
         system_prompt=(
@@ -123,7 +123,7 @@ AGENTS: dict[str, AgentDef] = {
 
     "claims-agent": AgentDef(
         agent_id="claims-agent",
-        name="GEICO Claims Agent",
+        name="Claims Agent",
         description="Handles claim lookups, status updates, adjuster "
                     "payments, and fraud escalations.",
         system_prompt=(
@@ -163,7 +163,7 @@ AGENTS: dict[str, AgentDef] = {
 
     "underwriting-agent": AgentDef(
         agent_id="underwriting-agent",
-        name="GEICO Underwriting Agent",
+        name="Underwriting Agent",
         description="Pulls credit, prices risk, binds/cancels policies, "
                     "issues refunds.",
         system_prompt=(
@@ -205,7 +205,7 @@ AGENTS: dict[str, AgentDef] = {
 
     "fraud-agent": AgentDef(
         agent_id="fraud-agent",
-        name="GEICO Special Investigations Unit (SIU)",
+        name="Special Investigations Unit (SIU)",
         description="Elevated privilege. Cross-customer investigation, "
                     "fraud flagging, record deletion under legal hold.",
         system_prompt=(
@@ -250,7 +250,7 @@ AGENTS: dict[str, AgentDef] = {
 
 SUPERVISOR = AgentDef(
     agent_id="supervisor-agent",
-    name="GEICO Supervisor / Router",
+    name="Supervisor / Router",
     description="Top-level router. Decides which specialist agent should "
                 "handle the request and delegates to it.",
     system_prompt=(
@@ -384,14 +384,103 @@ class Specialist:
 # Supervisor with real delegation (calls into Specialist executors)
 # ---------------------------------------------------------------------------
 
-class MultiAgentSystem:
-    def __init__(self, llm_model: str | None = None) -> None:
-        model = llm_model or os.getenv("LLM_MODEL", "gpt-4o-mini")
+def _build_chat_llm(model: str | None = None) -> ChatOpenAI:
+    """Construct the ChatOpenAI client used by every agent.
+
+    By default this points at OpenAI directly. If `LITELLM_BASE_URL` is set
+    in the environment, the client is repointed at a LiteLLM proxy (which
+    speaks the OpenAI Chat Completions API). That lets us drop the
+    Votal/LiteLLM guardrail layer in front of every LLM hop without
+    changing any agent code — the proxy enforces its own input/output
+    guardrails on top of the Shield-side checks the host app already runs.
+
+    Optional headers (forwarded to LiteLLM):
+        X-Votal-Tenant-Key  - selects per-tenant guardrail config
+        x-tenant-id         - audit attribution
+        x-user-id           - audit attribution
+        x-session-id        - audit attribution
+    """
+    litellm_base = (os.getenv("LITELLM_BASE_URL") or "").rstrip("/")
+    using_litellm = bool(litellm_base)
+
+    if using_litellm:
+        # When going through LiteLLM the API key is the proxy's virtual
+        # key, not the raw OpenAI key. Fall back to OPENAI_API_KEY because
+        # LiteLLM accepts any non-empty string when key auth is disabled.
+        api_key = os.getenv("LITELLM_API_KEY") or os.getenv("OPENAI_API_KEY") or "sk-litellm-anon"
+        default_model = os.getenv("LLM_MODEL", "gpt-4.1-mini")
+        base_url = litellm_base
+    else:
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
-            raise RuntimeError("OPENAI_API_KEY is required")
+            raise RuntimeError(
+                "OPENAI_API_KEY is required (or set LITELLM_BASE_URL "
+                "to route through a LiteLLM proxy)."
+            )
+        default_model = os.getenv("LLM_MODEL", "gpt-4o-mini")
+        base_url = None
 
-        self.llm = ChatOpenAI(model=model, temperature=0.2, api_key=api_key)
+    headers: dict[str, str] = {}
+    if using_litellm:
+        tenant_key = (os.getenv("VOTAL_TENANT_KEY")
+                      or os.getenv("TENANT_ID")
+                      or "geico-poc")
+        headers["X-Votal-Tenant-Key"] = tenant_key
+        headers["x-tenant-id"] = tenant_key
+        user_id = os.getenv("VOTAL_USER_ID") or "geico-agent"
+        session_id = os.getenv("VOTAL_SESSION_ID") or "geico-session"
+        headers["x-user-id"] = user_id
+        headers["x-session-id"] = session_id
+
+    kwargs: dict = {
+        "model": model or default_model,
+        "temperature": 0.2,
+        "api_key": api_key,
+    }
+    if base_url:
+        kwargs["base_url"] = base_url
+    if headers:
+        kwargs["default_headers"] = headers
+
+    # LITELLM_GUARDRAILS lets a managed LiteLLM proxy (e.g. Railway-hosted)
+    # be told *per request* which guardrails to run. Required when the proxy
+    # is configured with `default_on: false` for its votal guards — without
+    # this opt-in payload the proxy passes traffic through unguarded. The
+    # value is a comma-separated list of guardrail_names from the proxy's
+    # config.yaml, e.g. "votal-input-guard,votal-output-guard".
+    guardrails_csv = (os.getenv("LITELLM_GUARDRAILS") or "").strip()
+    if using_litellm and guardrails_csv:
+        guardrails = [g.strip() for g in guardrails_csv.split(",") if g.strip()]
+        if guardrails:
+            # `extra_body` is forwarded verbatim by the OpenAI SDK as
+            # additional JSON fields on every chat-completions request,
+            # which is exactly what LiteLLM's `guardrails` opt-in expects.
+            kwargs["extra_body"] = {"guardrails": guardrails}
+
+    return ChatOpenAI(**kwargs)
+
+
+class MultiAgentSystem:
+    def __init__(self, llm_model: str | None = None) -> None:
+        self.llm = _build_chat_llm(llm_model)
+        self.llm_endpoint = (
+            getattr(self.llm, "openai_api_base", None)
+            or os.getenv("LITELLM_BASE_URL")
+            or "https://api.openai.com/v1"
+        )
+        self.llm_model = (
+            getattr(self.llm, "model_name", None)
+            or getattr(self.llm, "model", None)
+            or os.getenv("LLM_MODEL", "?")
+        )
+        event_log.record(
+            kind="agent_chat", agent_key=SUPERVISOR.agent_id, user_role="",
+            action="allow",
+            summary=(f"LLM endpoint = {self.llm_endpoint} "
+                     f"(model={self.llm_model})"),
+            detail={"endpoint": self.llm_endpoint, "model": self.llm_model,
+                    "via_litellm": bool(os.getenv("LITELLM_BASE_URL"))},
+        )
 
         self.specialists: dict[str, Specialist] = {
             agent_def.agent_id: Specialist(agent_def, self.llm)

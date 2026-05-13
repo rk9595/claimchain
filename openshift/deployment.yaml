@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: insurance-agent
+  labels:
+    app: insurance-agent
+    app.kubernetes.io/name: insurance-agent
+    app.kubernetes.io/component: web
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: insurance-agent
+  template:
+    metadata:
+      labels:
+        app: insurance-agent
+        app.kubernetes.io/name: insurance-agent
+        app.kubernetes.io/component: web
+    spec:
+      containers:
+        - name: insurance-agent
+          image: docker.io/sundi133/insurance-agent:0.1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 7860
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: insurance-agent-config
+            - secretRef:
+                name: insurance-agent-secrets
+          # The image already follows Red Hat's "support arbitrary user
+          # IDs" pattern (numeric USER 1001, /app owned by GID 0 +
+          # group-writable). No SecurityContext block needed; the
+          # namespace's default `restricted-v2` SCC will inject a random
+          # UID at runtime and that UID will inherit write perms via
+          # GID 0.
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 7860
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 7860
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi

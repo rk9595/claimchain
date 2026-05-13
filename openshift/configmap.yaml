@@ -1,0 +1,49 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: insurance-agent-config
+  labels:
+    app: insurance-agent
+data:
+  # Server
+  PORT: "7860"
+
+  # Shield (LLM-Shield / Votal Shield) — same Shield deployment as local dev
+  LLM_SHIELD_URL: "https://kk5losqxwr2ui7.api.runpod.ai"
+  TENANT_ID: "geico-poc"
+
+  # ----------------------------------------------------------------
+  # LLM routing — every chat hop goes through the managed LiteLLM
+  # proxy on Railway. The proxy enforces Votal AI guardrails when the
+  # request opts in via `guardrails: [...]` (see LITELLM_GUARDRAILS
+  # below), so each hop is double-protected: Shield at the boundary
+  # of the agent app, Votal at the LiteLLM proxy.
+  # ----------------------------------------------------------------
+  LITELLM_BASE_URL: "https://litellm-guardrails-votal-ai-production.up.railway.app/v1"
+
+  # Comma-separated guardrail_names defined in the proxy's config.yaml.
+  # The agent passes them per-request via OpenAI `extra_body`. Required
+  # because the Railway proxy is configured with `default_on: false`.
+  LITELLM_GUARDRAILS: "votal-input-guard,votal-output-guard"
+
+  # Must be a model_name registered in the Railway proxy's config.yaml.
+  # It also must support tool/function calling (LangChain agent uses
+  # tool-calling agents for every specialist + the supervisor).
+  # Verify available models with:
+  #   curl -H "Authorization: Bearer <master-key>" \
+  #        https://litellm-guardrails-votal-ai-production.up.railway.app/v1/models
+  # gpt-4.1-mini and claude-3-5-sonnet are the most reliable
+  # tool-callers in the Railway model_list. kimi-k2.5 / qwen3.5-27b
+  # also work for chat but their tool-calling JSON output is less
+  # consistent — pick one of those only if you've validated it
+  # end-to-end with the supervisor delegation chain.
+  LLM_MODEL: "gpt-4.1-mini"
+
+  # No embedding endpoint is configured for this POC. The app uses local
+  # lexical retrieval over the bundled markdown policy docs, so RAG does
+  # not call OpenAI, LiteLLM embeddings, or any vector database.
+
+  # Votal attribution headers forwarded to the proxy on every hop.
+  VOTAL_TENANT_KEY: "geico-poc"
+  VOTAL_USER_ID: "openshift-agent"
+  VOTAL_SESSION_ID: "openshift-session"

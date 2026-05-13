@@ -1,0 +1,55 @@
+# Secrets — never bake into image
+.env
+.env.*
+!.env.example
+
+# Python build artefacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+env/
+.Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Local data (re-seeded inside the container on first start)
+*.db
+*.db-journal
+*.sqlite
+*.sqlite-journal
+
+# Run artefacts / scratch scripts not needed at runtime
+*.log
+red_team_last_run.json
+test_prompts_last_run.json
+tenant_dump.json
+_reclassify.py
+_inspect.py
+run_test_prompts.py
+full_run.log
+
+# Docs (optional — keep image lean)
+README.md
+TEST_PROMPTS.md
+onprem_installation.md
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Docker meta (avoid recursive context)
+Dockerfile*
+.dockerignore

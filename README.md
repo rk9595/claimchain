@@ -73,14 +73,22 @@ process straight to OpenAI. Shield is called on separate HTTP requests
 for guardrails and tool authorization. This is the documented
 integration pattern.
 
+> Optional: you can swap direct-OpenAI for the **LiteLLM proxy** with
+> Votal AI guardrails by setting `LITELLM_BASE_URL` in `.env`. In that
+> mode every LLM hop the agent system makes goes through LiteLLM, which
+> runs its own pre/post-call Votal guardrails on top of the Shield-side
+> checks the host app already runs. See
+> [Routing through LiteLLM](#optional-route-the-llm-through-litellm--votal-ai-guardrails)
+> below.
+
 ---
 
 ## Prerequisites
 
 - **Python 3.10+** (tested on 3.11 and 3.12)
 - **pip** (bundled with Python)
-- An **OpenAI API key** with access to `gpt-4o-mini` and
-  `text-embedding-3-small`
+- An **LLM API key**: either `OPENAI_API_KEY` for direct OpenAI chat, or
+  `LITELLM_API_KEY` + `LITELLM_BASE_URL` for a LiteLLM proxy
 - A reachable **LLM-Shield deployment** (RunPod, self-hosted, or local)
   with an **admin key** for that deployment
 - **Git** for cloning
@@ -133,7 +141,7 @@ Open `.env` and fill in:
 | `LLM_SHIELD_URL` | Base URL of the Shield deployment you've been given (e.g. `https://<pod>.api.runpod.ai` or `http://localhost:8000`). No trailing slash. |
 | `SHIELD_ADMIN_KEY` | Shield admin portal → Platform → Admin keys |
 | `RUNPOD_TOKEN` | Only if Shield is hosted behind RunPod's API gateway. Leave blank otherwise. |
-| `OPENAI_API_KEY` | platform.openai.com → API keys |
+| `OPENAI_API_KEY` | Optional for direct OpenAI chat. Not needed when `LITELLM_BASE_URL` + `LITELLM_API_KEY` are set. |
 
 Leave `TENANT_ID=geico-poc` and `TENANT_API_KEY` blank — the setup
 script will provision the tenant and write the API key back into your
@@ -175,7 +183,66 @@ events panel on the right. SQLite (`geico.db`) is created and seeded
 on first launch with ~50 customers, ~100 policies, ~40 claims, plus
 supporting tables.
 
-### 6. (Optional) Run the scripted red-team suite
+### 6. (Optional) Route the LLM through LiteLLM + Votal AI guardrails
+
+The agent system uses an OpenAI-compatible client, so you can drop in any
+OpenAI-compatible proxy without touching agent code. The most useful
+swap is the **LiteLLM proxy** in `litellm/litellm-guardrails-votal-ai/`
+— it hosts the same `votal_guardrail.VotalGuardrail` plugin in
+`pre_call` + `post_call` mode, so every LLM hop the agent makes is
+inspected by Votal for adversarial prompts, PII leakage, topic
+restriction, etc., **in addition to** the Shield input/output guardrails
+this app already runs at the request boundary.
+
+**1. Start the LiteLLM proxy** (in a separate terminal):
+
+```bash
+cd ../../litellm/litellm-guardrails-votal-ai
+pip install litellm httpx
+export OPENAI_API_KEY=...
+export RUNPOD_TOKEN=...      # only if Votal is hosted behind RunPod
+litellm --config config.yaml --port 4000
+```
+
+**2. Point this app at it** by adding to `.env`:
+
+```ini
+LITELLM_BASE_URL=http://localhost:4000/v1
+LITELLM_API_KEY=sk-litellm-anon
+LLM_MODEL=gpt-4.1-mini                       # chat model_name in config.yaml
+VOTAL_TENANT_KEY=geico-poc                   # forwarded as X-Votal-Tenant-Key
+```
+
+**3. Restart `python app.py`.**
+
+`GET /health` will now report `llm_via_litellm: true` and
+`llm_endpoint: http://localhost:4000/v1`. The Shield Events panel logs
+an `LLM endpoint = ...` line on startup so you can confirm the swap at
+a glance.
+
+What changes vs. direct OpenAI:
+
+| Layer | Direct OpenAI mode | LiteLLM mode |
+|---|---|---|
+| Boundary input/output guardrails | Shield (`/guardrails/input`, `/guardrails/output`) | **Same** Shield calls |
+| Per-tool RBAC | Shield (`/v1/agents/authorize`) | **Same** Shield calls |
+| LLM completion | Direct → OpenAI `gpt-4o-mini` | Through LiteLLM proxy → Votal `pre_call`/`post_call` guardrails → upstream model |
+| RAG retrieval | Local lexical search over `data/*.md` | Same local lexical search; no embeddings API call |
+
+Two things to watch for in this mode:
+
+- **Multi-step agent loops trip Votal output guards more often.** When a
+  tool like `lookup_customer` returns real PII (which an authorized
+  `fraud_investigator` is allowed to see), the next LLM hop has that
+  PII in its context. Votal's `pii-leakage` post-call guard may block
+  that hop. This is exactly the kind of integration friction the
+  harness is meant to surface — adjust the per-tenant Votal config
+  (or send `metadata.votal_output_guardrails` overrides) accordingly.
+- **No LangChain code changes.** The swap is a pure environment-variable
+  flip — `_build_chat_llm()` in `agents.py` reads `LITELLM_BASE_URL`
+  and re-points `ChatOpenAI` if set.
+
+### 7. (Optional) Run the scripted red-team suite
 
 ```bash
 python red_team.py
@@ -183,6 +250,109 @@ python red_team.py
 ```
 
 Or click **Run Red-Team Suite** in the UI.
+
+---
+
+## Running in Docker
+
+A slim Python image is provided. No secrets are baked in — everything is
+passed at runtime via environment variables. The container runs as a
+non-root user, exposes port `7860`, and ships a HEALTHCHECK that polls
+`/health`.
+
+### Build
+
+From this directory:
+
+```bash
+docker build -t sundi133/insurance-agent:latest .
+```
+
+### Run
+
+The minimum required envs are the Shield connection + an LLM key. For a
+LiteLLM-backed POC:
+
+```bash
+docker run --rm -p 7860:7860 \
+  -e LLM_SHIELD_URL=https://<your-shield-host> \
+  -e SHIELD_ADMIN_KEY=<admin-key> \
+  -e RUNPOD_TOKEN=<runpod-bearer> \
+  -e TENANT_ID=geico-poc \
+  -e TENANT_API_KEY=<tenant-key> \
+  -e LITELLM_BASE_URL=https://<your-litellm-host>/v1 \
+  -e LITELLM_API_KEY=<litellm-key> \
+  -e LLM_MODEL=gpt-4.1-mini \
+  sundi133/insurance-agent:latest
+```
+
+Easier: keep your local `.env` and pass it through:
+
+```bash
+docker run --rm -p 7860:7860 --env-file .env sundi133/insurance-agent:latest
+```
+
+(Windows PowerShell users: same command — `docker` accepts forward
+slashes.)
+
+The UI is then on `http://127.0.0.1:7860/ui`. The SQLite DB is created
+inside the container and is **ephemeral** — when the container exits the
+audit log goes with it. To persist across runs, mount a host volume:
+
+```bash
+docker run --rm -p 7860:7860 --env-file .env \
+  -e GEICO_DB_PATH=/data/agent.db \
+  -v "$(pwd)/agent-data:/data" \
+  sundi133/insurance-agent:latest
+```
+
+### Talking to a LiteLLM proxy on the host
+
+If your LiteLLM proxy is running on the host (not in a sibling
+container), the container needs `host.docker.internal` to resolve.
+Docker Desktop on macOS / Windows does this automatically; on Linux pass
+`--add-host=host.docker.internal:host-gateway`.
+
+```bash
+docker run --rm -p 7860:7860 --env-file .env \
+  -e LITELLM_BASE_URL=http://host.docker.internal:4000/v1 \
+  -e LITELLM_API_KEY=sk-litellm-anon \
+  -e LLM_MODEL=gpt-4.1-mini \
+  --add-host=host.docker.internal:host-gateway \
+  sundi133/insurance-agent:latest
+```
+
+Confirm routing once it's up: `curl http://127.0.0.1:7860/health` should
+report `"llm_via_litellm": true`.
+
+### One-shot tenant provisioning from the same image
+
+`setup_tenant.py` is included in the image, so you can re-provision a
+Shield tenant from any host without a local Python install:
+
+```bash
+docker run --rm --env-file .env sundi133/insurance-agent:latest \
+  python setup_tenant.py
+```
+
+### Push to Docker Hub
+
+```bash
+docker login                                         # one-time
+docker tag  sundi133/insurance-agent:latest sundi133/insurance-agent:0.1.0
+docker push sundi133/insurance-agent:latest
+docker push sundi133/insurance-agent:0.1.0
+```
+
+For multi-arch (Apple Silicon + Intel + ARM servers) use `buildx`:
+
+```bash
+docker buildx create --use --name multi 2>/dev/null || true
+docker buildx build --platform linux/amd64,linux/arm64 \
+  -t sundi133/insurance-agent:latest \
+  -t sundi133/insurance-agent:0.1.0 \
+  --push .
+```
 
 ---
 
@@ -200,6 +370,8 @@ geico-insurance-agent/
 ├── rag.py              In-memory vector store over data/*.md
 ├── red_team.py         Attack scenarios + CLI runner
 ├── requirements.txt
+├── Dockerfile          Slim runtime image (python:3.12-slim, non-root)
+├── .dockerignore
 ├── .env.example
 ├── .gitignore
 ├── data/               Policy documents (auto, home, motorcycle, FAQ, claims process)
@@ -306,7 +478,9 @@ Blocked tool calls leave **no** row here — they never reached execution.
 
 ## Troubleshooting
 
-- **`OPENAI_API_KEY is required`** — missing or malformed in `.env`.
+- **`OPENAI_API_KEY is required`** — you're running direct OpenAI chat mode.
+  For the LiteLLM POC, set `LITELLM_BASE_URL` and `LITELLM_API_KEY`
+  instead. RAG no longer uses embeddings, so it does not need an OpenAI key.
 - **`Tenant creation 409 conflict`** — you're re-running setup; the script reuses the existing tenant and just re-asserts the API key. Safe to ignore.
 - **Every chat returns `shield error 599`** — `LLM_SHIELD_URL` is unreachable (network / wrong host) or the admin/tenant/RunPod tokens are wrong. Check the Shield admin portal.
 - **Every tool call blocks with `Shield authorize endpoint error`** — same root cause; the authorize wrapper fails CLOSED by design when Shield can't be reached.

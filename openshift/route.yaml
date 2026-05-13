@@ -1,0 +1,20 @@
+# Edge-terminated HTTPS Route. OpenShift's default ingress provides the
+# TLS cert; the pod itself only serves plain HTTP on port 7860.
+# Plain HTTP requests are auto-redirected to HTTPS.
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: insurance-agent
+  labels:
+    app: insurance-agent
+spec:
+  to:
+    kind: Service
+    name: insurance-agent
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None
