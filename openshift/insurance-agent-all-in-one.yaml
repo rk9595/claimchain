@@ -45,8 +45,6 @@ data:
 
   # LiteLLM proxy for all chat/model calls
   LITELLM_BASE_URL: "https://litellm-guardrails-votal-ai-production.up.railway.app/v1"
-  LITELLM_API_BASE: "https://litellm-guardrails-votal-ai-production.up.railway.app/v1"
-
   # The Railway proxy has default_on=false for Votal guards, so the app
   # opts in per request via OpenAI extra_body: {"guardrails": [...]}.
   LITELLM_GUARDRAILS: "votal-input-guard,votal-output-guard"
