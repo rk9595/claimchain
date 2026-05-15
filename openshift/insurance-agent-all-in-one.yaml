@@ -22,12 +22,12 @@ metadata:
 type: Opaque
 stringData:
   # Shield / Votal admin + tenant auth
-  SHIELD_ADMIN_KEY: "REPLACE_ME"
-  TENANT_API_KEY: "REPLACE_ME"
-  RUNPOD_TOKEN: "REPLACE_ME"
+  SHIELD_ADMIN_KEY: ""
+  TENANT_API_KEY: ""
+  RUNPOD_TOKEN: ""
 
   # Railway-hosted LiteLLM proxy master key
-  LITELLM_API_KEY: "REPLACE_ME"
+  LITELLM_API_KEY: ""
 ---
 apiVersion: v1
 kind: ConfigMap

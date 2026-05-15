@@ -1,10 +1,10 @@
-"""Provision the `geico-poc` tenant on the configured Shield deployment.
+"""Provision the insurance-agent tenant on the configured Shield deployment.
 
 Run once before `python app.py`. Reads config from `.env`:
 
     SHIELD_ADMIN_KEY  - admin key with X-Admin-Key privileges
     LLM_SHIELD_URL    - base URL of the Shield deployment
-    TENANT_ID         - target tenant id (default: geico-poc)
+    TENANT_ID         - target tenant id (default: insurance-poc)
     TENANT_API_KEY    - existing key to reuse; if empty a new one is minted
 
 On success the script writes `TENANT_API_KEY` back into `.env` so subsequent
@@ -558,9 +558,9 @@ def _build_tool_policies() -> tuple[dict, dict]:
 
 
 def _build_guardrail_config() -> dict:
-    """Return the input/output guardrail bundle used for the GEICO tenant.
+    """Return the input/output guardrail bundle used for the insurance tenant.
 
-    Strict posture: every guardrail uses `action: "block"` so the GEICO
+    Strict posture: every guardrail uses `action: "block"` so the insurance
     security team can demo true deny behaviour end-to-end. A few of the
     enforcement layers (pii_detection, role_redaction) *also* return a
     sanitized string when they fire; our `shield_client.check_output()`
@@ -614,7 +614,7 @@ def _build_guardrail_config() -> dict:
                         "insurance analytics and reporting",
                         "general insurance customer service",
                     ],
-                    "system_purpose": "GEICO customer service and insurance operations (auto, home, motorcycle, claims, fraud, underwriting, analytics)",
+                    "system_purpose": "Insurance customer service and insurance operations (auto, home, motorcycle, claims, fraud, underwriting, analytics)",
                     "confidence_threshold": 0.8,
                 },
             },
@@ -650,7 +650,7 @@ def _build_guardrail_config() -> dict:
 # confidential < restricted.
 
 def _build_rbac_config() -> dict:
-    """Map each GEICO agent to an RBAC role (tier) with an appropriate
+    """Map each insurance agent to an RBAC role (tier) with an appropriate
     clearance level and tool whitelist.
     """
     from agents import AGENTS, SUPERVISOR
@@ -736,7 +736,7 @@ def _build_rbac_config() -> dict:
 def main() -> int:
     shield_url = _env("LLM_SHIELD_URL").rstrip("/")
     admin_key = _env("SHIELD_ADMIN_KEY")
-    tenant_id = _env("TENANT_ID", "geico-poc")
+    tenant_id = _env("TENANT_ID", "insurance-poc")
     tenant_key = _env("TENANT_API_KEY")
     runpod_token = _env("RUNPOD_TOKEN")
 
@@ -763,10 +763,10 @@ def main() -> int:
     if r.status_code == 404:
         print(f"Creating tenant '{tenant_id}'...")
         if not tenant_key:
-            tenant_key = f"sk-geico-{secrets.token_urlsafe(18)}"
+            tenant_key = f"sk-insurance-{secrets.token_urlsafe(18)}"
         payload = {
             "tenant_id": tenant_id,
-            "name": "GEICO Insurance POC",
+            "name": "Insurance Agent POC",
             "plan": "enterprise",
             "api_keys": [tenant_key],
             "rbac": rbac_config,
@@ -791,7 +791,7 @@ def main() -> int:
         else:
             print("  guardrail + RBAC config updated.")
         if not tenant_key:
-            new_key = f"sk-geico-{secrets.token_urlsafe(18)}"
+            new_key = f"sk-insurance-{secrets.token_urlsafe(18)}"
             r3 = requests.post(
                 f"{shield_url}/v1/admin/tenants/{tenant_id}/api-keys",
                 headers=admin_headers, json={"api_key": new_key}, timeout=30,
